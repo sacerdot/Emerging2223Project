@@ -98,7 +98,7 @@ In particolare il "render" visualizza la griglia, indicando la posizione di ogni
 - `{position, PID, X, Y}` la posizione dell'automobile, inviato dall'attore "detect"
 - `{target, PID, X, Y}` la posizione del posteggio obiettivo dell'automobile, inviato dall'attore "detect"
 - `{parked, PID, X, Y, IsParked}` inviata dall'attore "ambient" quando l'auto parcheggia/riparte
-- `{friends, PID, PIDLIST} inviata dall'attore "friendship" quando cambia la lista di amici
+- `{friends, PID, PIDLIST}` inviata dall'attore "friendship" quando cambia la lista di amici
 
 In tutti i messaggi qui sopra si deve utilizzare lo stesso PID per identificare le automobili (es. il PID dell'attore "state" o quello dell'attore "main").
 
