@@ -1,6 +1,12 @@
 # Emerging2223Project
 Emerging Programming Languages 20223/2023 Project Specification
-(in Italian Only). Version 1.0.
+(in Italian Only). Version 1.1.
+
+## CHANGELOG
+
+- Version 1.1
+-- {park, PID, Ref} cambiato in {park, PID, X, Y, Ref} closes Issue #1.
+   L'informazione poteva essere ricavata dall'ambient memorizzandola a partire dal precedente messaggio che verificava se il posteggio fosse vuoto o meno. Tuttavia, non essendoci un Ref condiviso, poteva essere ritornata un'informazione non correlata nel caso di perdita di messaggi.
 
 ## Descrizione del problema
 
@@ -64,7 +70,7 @@ Dopo ogni movimento invia la richiesta
 In seguito alla ricezione del messaggio `status`, il messaggio viene condiviso con l'attore "state" tramite un protocollo privato.
 
 Nel caso in cui sia stato raggiunto il posteggio obiettivo e questo sia libero:
-- `{park, PID, Ref}` viene invato all'attore "ambient" per dire che l'automobile sta parcheggiando. `Ref` è una nuova reference.
+- `{park, PID, X, Y, Ref}` viene invato all'attore "ambient" per dire che l'automobile sta parcheggiando. `Ref` è una nuova reference.
 - `{leave, PID, Ref}` viene inviato dopo 1-5s (valore scelto casualmente) all'attore "ambient" per dire che l'automobile sta lasciando il posteggio. La reference contenuta nel messaggio deve essere identica a quella del messaggio precedente.
 
 Nel caso in cui due automobili arrivino contemporanemante al posteggio e inviino entrambe un messaggio `park`, l'ambiente assegnerà il posteggio a quella arrivata per prima, killando la seconda automobile.
