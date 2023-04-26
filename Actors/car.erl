@@ -1,5 +1,5 @@
 -module(car).
-    -export([main/2]).
+    -export([main_car/2]).
 
     %The main actor creates other actors and re-creates them if they fail
     main_car(H, W) ->

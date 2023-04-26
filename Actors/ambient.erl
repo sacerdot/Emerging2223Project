@@ -56,6 +56,7 @@
 		PID_A = spawn(?MODULE, ambient, [Chessboard]), %spawn the ambient actor
 		io:format("Ambient PID: ~p~n", [PID_A]), %DEBUG
 	    register(ambient, PID_A), %register the ambient actor with the name ambient
-	    io:format("Correctly registered ~p as 'ambient' ~n", [PID_A]). %DEBUG
-		
-		
+	    io:format("Correctly registered ~p as 'ambient' ~n", [PID_A]), %DEBUG
+		R = spawn(render, main, []),
+		%register(render, R),
+		R ! {Chessboard}. %DEBUG
