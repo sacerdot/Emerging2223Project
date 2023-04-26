@@ -18,14 +18,16 @@
 		end,
 		ambient(Chessboard). % Loop TODO: check if it's ok here or to be setted at the end of each receive block
 	
-	print_list([])-> ok;
-	print_list([H|T]) -> 
-		io:format("printing: ~p~n", [H]),
-		print_list(T).
+	%Function to print each element of dict 
+	printDict(Dict) -> 
+		io:fwrite("Dict:~n"),
+		dict:fold(fun(K, V, Acc) -> io:fwrite("Key ~p : Value: ~p~n", [K, V]), Acc end, [], Dict).
+
 	
 	main(H, W) ->
-		Chessboard = [{X, Y, undefined} || X <- lists:seq(1, H), Y <- lists:seq(1, W)], %define a chessboard
-		print_list(Chessboard),
+		Chessboard = dict:from_list([{{X, Y}, undefined} || X <- lists:seq(1, H), Y <- lists:seq(1, W)]),
+		printDict(Chessboard), %DEBUG
+		io:format("Chessboard size ~p~n", [dict:size(Chessboard)]),
 		PIDA = spawn(?MODULE, ambient, [Chessboard]), %spawn the ambient actor
 		io:format("Ambient PID: ~p~n", [PIDA]). %DEBUG
 		%PIDA ! {isFree, self(), 1, 1, 1}. %DEBUG
