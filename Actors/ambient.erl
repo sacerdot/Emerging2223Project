@@ -26,8 +26,11 @@
 	
 	main(H, W) ->
 		Chessboard = dict:from_list([{{X, Y}, undefined} || X <- lists:seq(1, H), Y <- lists:seq(1, W)]),
-		printDict(Chessboard), %DEBUG
-		io:format("Chessboard size ~p~n", [dict:size(Chessboard)]),
+		%printDict(Chessboard), %DEBUG
+		%io:format("Chessboard size ~p~n", [dict:size(Chessboard)]),
 		PIDA = spawn(?MODULE, ambient, [Chessboard]), %spawn the ambient actor
-		io:format("Ambient PID: ~p~n", [PIDA]). %DEBUG
-		%PIDA ! {isFree, self(), 1, 1, 1}. %DEBUG
+		io:format("Ambient PID: ~p~n", [PIDA]), %DEBUG
+		R = spawn(render, main, []),
+		%register(render, R),
+		R ! {Chessboard}. %DEBUG
+			%PIDA ! {isFree, self(), 1, 1, 1}. %DEBUG
