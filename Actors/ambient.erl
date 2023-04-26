@@ -49,11 +49,13 @@
 						end
 					end, [], Dict).
 
-
 	main(H, W) ->
 		Chessboard = dict:from_list([{{X, Y}, undefined} || X <- lists:seq(1, H), Y <- lists:seq(1, W)]),
 		printDict(Chessboard), %DEBUG
 		io:format("Chessboard size ~p~n", [dict:size(Chessboard)]),
 		PID_A = spawn(?MODULE, ambient, [Chessboard]), %spawn the ambient actor
-		io:format("Ambient PID: ~p~n", [PID_A]). %DEBUG
+		io:format("Ambient PID: ~p~n", [PID_A]), %DEBUG
+	    register(ambient, PID_A), %register the ambient actor with the name ambient
+	    io:format("Correctly registered ~p as 'ambient' ~n", [PID_A]). %DEBUG
+		
 		
