@@ -5,17 +5,42 @@
     main_car(H, W) ->
         {X_Spawn, Y_Spawn} = generate_coordinates(H, W),
         {X_Goal, Y_Goal} = generate_coordinates(H, W),
-        PID_S = spawn(?MODULE, state, []),
-        PID_D = spawn(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W]),
+        %PID_S receive a dict with all the free parking
+        PID_S = spawn(?MODULE, state, [dict:from_list([{{X, Y}, true} || X <- lists:seq(1, H), Y <- lists:seq(1, W)]), X_Goal, Y_Goal, H, W]),
+        PID_D = spawn(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),
         PID_F = spawn(?MODULE, friendship, []).
         %TODO: handling respawn
 
     friendship() ->
         io:fwrite("CIAO\n").
 
-    state() ->
-        
-        io:fwrite("CIAO\n").
+    state(World_Knowledge, X_Goal, Y_Goal, H, W) ->
+        receive
+            {updateState, PID_D,  X, Y, isFree} -> 
+                io:fwrite("Update Value for park (~p,~p), new value: ~p~n", [{X,Y}, isFree]), %Update parkings  
+                %TODO: send the new info to friends
+                case isFree of
+                    %If a park becames free, the state actor updates the knowledge of the world
+                    %It doesn't update the goal coordinates because this case doesn't affect s
+                    true -> 
+                        state(dict:store({X,Y}, isFree, World_Knowledge), X_Goal, Y_Goal, H, W);
+                    %If a park becames busy I have to check if it was the goal
+                    false -> 
+                        case {X=:=X_Goal, Y =:= Y_Goal} of
+                            %If the goal is busy, I have to generate a new goal
+                            {true,true} -> 
+                                io:fwrite("New Goal: ~p~n", [{X,Y}]),
+                                {X_Goal_New, Y_Goal_New} = generate_coordinates(H, W), 
+                                PID_D ! {updateGoal, X_Goal_New, Y_Goal_New},
+                                state(dict:store({X,Y}, isFree, World_Knowledge), X_Goal_New, Y_Goal_New, H, W);
+                            %Else update the knowledge of the world
+                            {_,_} -> 
+                                state(dict:store({X,Y}, isFree, World_Knowledge), X_Goal, Y_Goal, H, W)
+                        end 
+                end,
+                state(dict:store({X,Y}, isFree, World_Knowledge), X_Goal, Y_Goal, H, W)
+        end,
+        state(World_Knowledge, X_Goal, Y_Goal, H, W).
 
     generate_coordinates(H, W) ->
         X = random:uniform(H),
@@ -96,11 +121,18 @@
     %@param X:  actual X coordinate of the car
     %@param Y:  actual Y coordinate of the car
     %
-    detect(X, Y, X_Goal, Y_Goal, H, W) ->
-        {X_New, Y_New} = move(X, Y, Obj_Park, H, W), %TODO: H and W must be passed as parameters? 
+    detect(X, Y, X_Goal, Y_Goal, H, W, PID_S) ->
+        {X_New, Y_New} = move(X, Y, {X_Goal, Y_Goal}, H, W), %TODO: H and W must be passed as parameters? 
         ambient ! {isFree, self(), X_New, Y_New, make_ref()},
+        receive 
+            {status, Ref, isFree} -> 
+                PID_S ! {updateState, self(), X_New, Y_New, isFree}
+            %TODO: If i'm in goal wait the status of the goal from the ambient else 
+            %{updateGoal, X_Goal_New, Y_Goal_New} -> 
+            %detect(X_New, Y_New, X_Goal_New, Y_Goal_New, H, W, PID_S);
+        end, 
         timer:sleep(2000),
-        detect(X_New, Y_New, X_Goal, Y_Goal, H, W).
+        detect(X_New, Y_New, X_Goal, Y_Goal, H, W, PID_S).
 
        
 

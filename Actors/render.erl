@@ -1,29 +1,33 @@
-%Render actors rapresent the ambient at the moment of the request. They are used to show the current state of the ambient to the user.
+%Render actors represent the ambient at the moment of the request. They are used to show the current state of the ambient to the user.
 %Show in ASCII ART the ambient
 
 % Path: Actors\render.erl
-% Compare this snippet from Actors\ambient.erl:
-
 -module(render).
--export([main/0,order_chessboard/1]).
+-export([main/0, order_chessboard/1]).
 
-print([{{X,Y}, STATUS} | Tail],N)-> 
+print_chessboard([{{X,Y}, STATUS} | Tail],N)-> 
     case X == N of
         true -> 
             case STATUS == undefined of
                 true -> 
-                    io:fwrite("O  ");
-                    false -> 
-                        io:fwrite("X  ")
+                    io:format("O\t");
+                false -> 
+                    io:format("X\t")
             end,
-            print(Tail,N);
+            print_chessboard(Tail,N);
         false -> 
             io:format("~n"),
-            print(Tail,N+1)
+            print_chessboard([{{X,Y}, STATUS} | Tail],N+1)
     end;
 
-print([],_)-> ok.
+print_chessboard([],_)-> ok.
 
+
+%Function to print a list 
+print_list([H|T]) -> 
+    io:fwrite("~p~n", [H]),
+    print_list(T);
+print_list([]) -> ok.
 
 
 order_chessboard(Chessboard) ->
@@ -37,17 +41,13 @@ order_chessboard(Chessboard) ->
                                         end
                                 end
                             end,
-                            dict:to_list(Chessboard)).
+                            Chessboard).
 
 main() ->
     receive
-       {Chess} -> 
-            %io:fwrite("Chessboard:~n"),
+       {Chess} ->
+            timer:sleep(3000), %Just to wait the print of the Chess Parameter TODO: find a better solution to do thiss
             L = order_chessboard(Chess),
-            %io:format("~p ~n",[L]),	
-            %io:format("Chessboard ~p~n", [list:sort(list:to_list(Chess))]),
-            %print([L],1),
-            print(L,1)
-            %io:fwrite("DIOCANE~n")
-            %main()
+            print_chessboard(L,1),
+            main()
     end. 

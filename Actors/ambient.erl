@@ -2,7 +2,8 @@
 % L'atomo ambient è registrato come PID dell'attore.
 %
 -module(ambient).
-	-export([main/2, ambient/1]).
+-export([main/2, ambient/1]).
+-define(W, 5).
 
 	ambient(Chessboard) -> 
 		receive
@@ -24,7 +25,11 @@
 						io:fwrite("PID: ~p not parked before ~n", [PID]),
 						ambient(Chessboard)
 				end;
-			_ -> io:fwrite("DEFAULT3\n")
+			draw -> 
+				io:fwrite("Entered Draw ~n"), %DEBUG
+				render ! {dict:to_list(Chessboard)},
+				ambient(Chessboard);                  %DEBUG
+			_ -> io:fwrite("No Pattern Matching Found!\n")
 		end.
 	
 	%%%%%%
@@ -50,13 +55,19 @@
 					end, [], Dict).
 
 	main(H, W) ->
+		%Chessboard Definition
 		Chessboard = dict:from_list([{{X, Y}, undefined} || X <- lists:seq(1, H), Y <- lists:seq(1, W)]),
 		printDict(Chessboard), %DEBUG
 		io:format("Chessboard size ~p~n", [dict:size(Chessboard)]),
+		
+		%Spawn the render actor
+		PID_R = spawn(render, main, []),
+		register(render, PID_R),
+		io:format("Correctly registered ~p as 'render' ~n", [PID_R]), %DEBUG
+		render ! {dict:to_list(Chessboard)}, %DEBUG
+		
+		%Spawn ambient actor 
 		PID_A = spawn(?MODULE, ambient, [Chessboard]), %spawn the ambient actor
 		io:format("Ambient PID: ~p~n", [PID_A]), %DEBUG
 	    register(ambient, PID_A), %register the ambient actor with the name ambient
-	    io:format("Correctly registered ~p as 'ambient' ~n", [PID_A]), %DEBUG
-		R = spawn(render, main, []),
-		%register(render, R),
-		R ! {Chessboard}. %DEBUG
+	    io:format("Correctly registered ~p as 'ambient' ~n", [PID_A]). %DEBUG
