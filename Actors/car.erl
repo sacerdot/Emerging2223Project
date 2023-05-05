@@ -5,8 +5,8 @@
     main_car(H, W) ->
         {X_Spawn, Y_Spawn} = generate_coordinates(H, W),
         {X_Goal, Y_Goal} = generate_coordinates(H, W),
-        %PID_S receive a dict with all the free parking
-        PID_S = spawn(?MODULE, state, [dict:from_list([{{X, Y}, true} || X <- lists:seq(1, H), Y <- lists:seq(1, W)]), X_Goal, Y_Goal, H, W]),
+        %PID_S receive an empty dict()
+        PID_S = spawn(?MODULE, state, [dict:new(), X_Goal, Y_Goal, H, W]),
         PID_D = spawn(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),
         PID_F = spawn(?MODULE, friendship, []).
         %TODO: handling respawn
@@ -16,7 +16,7 @@
 
     state(World_Knowledge, X_Goal, Y_Goal, H, W) ->
         receive
-            {updateState, PID_D,  X, Y, isFree} -> 
+            {updateState, PID_D, X, Y, isFree} -> 
                 io:fwrite("Update Value for park (~p,~p), new value: ~p~n", [{X,Y}, isFree]), %Update parkings  
                 %TODO: send the new info to friends
                 case isFree of
@@ -36,11 +36,15 @@
                             %Else update the knowledge of the world
                             {_,_} -> 
                                 state(dict:store({X,Y}, isFree, World_Knowledge), X_Goal, Y_Goal, H, W)
-                        end 
-                end,
-                state(dict:store({X,Y}, isFree, World_Knowledge), X_Goal, Y_Goal, H, W)
-        end,
-        state(World_Knowledge, X_Goal, Y_Goal, H, W).
+                        end
+                end;
+            %Case Car Exit from the parking and needs new goal
+            {askNewGoal, PID_D, Ref} -> 
+               {X_Goal_New, Y_Goal_New} = generate_coordinates(H, W), %TODO: check if new coordinates I generate should be free?
+                PID_D ! {responseNewGoal, X_Goal_New, Y_Goal_New, Ref};
+
+            _ -> state( World_Knowledge, X_Goal, Y_Goal, H, W)
+        end.
 
     generate_coordinates(H, W) ->
         X = random:uniform(H),
@@ -94,45 +98,49 @@
     %       If the car is not in the goal, the function computes the next cell to reach the goal. 
     %       If the car is not in the goal and it must move along both the axes, the function chooses randomly the axis and the direction.
     move(X, Y, {X_Goal, Y_Goal}, H, W) ->
-        case X =:= X_Goal andalso Y =:= Y_Goal of
-            true -> 
-                Park_ref = make_ref(),
-                ambient ! {park, self(), X, Y, Park_ref}, %TODO: we must ask isFree before parking? 
-                timer:sleep(random:uniform(5)*1000), 
-                ambient ! {leave, self(), Park_ref},
-                %TODO: ask new goal
+
+        case {X =:= X_Goal, Y =:= Y_Goal} of
+            {true, true} -> 
                 {X, Y};
-            false ->
-                case X =:= X_Goal of
-                    true -> {X, (Y + compute_Y_movement(Y, Y_Goal, W)) rem W};
-                    false ->
-                        case Y =:= Y_Goal of
-                            true -> {(X + compute_X_movement(X, X_Goal, H)) rem H, Y};
-                            false ->
-                                case random:uniform(2) of
-                                    1 -> {(X + compute_X_movement(X, X_Goal, H)) rem H, Y};
-                                    2 -> {X, (Y + compute_Y_movement(Y, Y_Goal, W)) rem W}
-                                end
-                        end
+            {true, false}-> 
+                {X, (Y + compute_Y_movement(Y, Y_Goal, W)) rem W};
+            {false, true} -> 
+                {(X + compute_X_movement(X, X_Goal, H)) rem H, Y};
+            {false, false} ->
+                case random:uniform(2) of
+                    1 -> {(X + compute_X_movement(X, X_Goal, H)) rem H, Y};
+                    2 -> {X, (Y + compute_Y_movement(Y, Y_Goal, W)) rem W}
                 end
-        end.
-    
+        end. 
     %%%%%%
     %@param X:  actual X coordinate of the car
     %@param Y:  actual Y coordinate of the car
     %
     detect(X, Y, X_Goal, Y_Goal, H, W, PID_S) ->
-        {X_New, Y_New} = move(X, Y, {X_Goal, Y_Goal}, H, W), %TODO: H and W must be passed as parameters? 
-        ambient ! {isFree, self(), X_New, Y_New, make_ref()},
-        receive 
-            {status, Ref, isFree} -> 
-                PID_S ! {updateState, self(), X_New, Y_New, isFree}
-            %TODO: If i'm in goal wait the status of the goal from the ambient else 
-            %{updateGoal, X_Goal_New, Y_Goal_New} -> 
-            %detect(X_New, Y_New, X_Goal_New, Y_Goal_New, H, W, PID_S);
-        end, 
+        %Check if we are on goal
         timer:sleep(2000),
-        detect(X_New, Y_New, X_Goal, Y_Goal, H, W, PID_S).
+        {X_New, Y_New} = move(X, Y, {X_Goal, Y_Goal}, H, W), %TODO: H and W must be passed as parameters? 
+        render ! 
+        Ref = make_ref(),
+        ambient ! {isFree, self(), X_New, Y_New, Ref},
+        receive 
+            {updateGoal, X_Goal_New, Y_Goal_New} ->  detect(X_New, Y_New, X_Goal_New, Y_Goal_New, H, W, PID_S);
+            {status, Ref, isFree} -> 
+                PID_S ! {updateState, self(), X_New, Y_New, isFree},
+                case {X_New =:= X_Goal, Y_New =:= Y_Goal} of
+                    {true, true} ->
+                        Park_Ref = make_ref(),
+                        ambient ! {park, self(), X_New, Y_New, Park_Ref},
+                        timer:sleep(random:uniform(5)*1000),
+                        ambient ! {leave, self(), Park_Ref},
+                        PID_S ! {askNewGoal, self(), Park_Ref},
+                        receive
+                            {responseNewGoal, X_Goal_New, Y_Goal_New, Ref} ->
+                                detect(X_New, Y_New, X_Goal_New, Y_Goal_New, H, W, PID_S)
+                        end;
+                    _ -> detect(X_New, Y_New, X_Goal, Y_Goal, H, W, PID_S)
+                end  
+        end.
 
        
 

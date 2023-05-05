@@ -61,7 +61,7 @@
 		io:format("Chessboard size ~p~n", [dict:size(Chessboard)]),
 		
 		%Spawn the render actor
-		PID_R = spawn(render, main, []),
+		PID_R = spawn(render, main, [[{X, Y} || X <- lists:seq(1, H), Y <- lists:seq(1, W)], dict:new()]),
 		register(render, PID_R),
 		io:format("Correctly registered ~p as 'render' ~n", [PID_R]), %DEBUG
 		render ! {dict:to_list(Chessboard)}, %DEBUG
