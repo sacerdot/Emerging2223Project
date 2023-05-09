@@ -1,8 +1,11 @@
 # Emerging2223Project
 Emerging Programming Languages 20223/2023 Project Specification
-(in Italian Only). Version 1.1.
+(in Italian Only). Version 1.2.
 
 ## CHANGELOG
+
+- Version 1.2
+-- {myFriends, PIDLIST, Ref} cambiato in {myFriends, PIDSLIST, Ref} dove PIDSLIST è la lista di coppie {PIDF,PIDS} degli amici, dove PIDF è il PID dell'attore "Friend" e PIDS quello dell'attore "state". closes Issue #2.
 
 - Version 1.1
 -- {park, PID, Ref} cambiato in {park, PID, X, Y, Ref} closes Issue #1.
@@ -53,7 +56,8 @@ Il protocollo permette di chiedere agli amici la lista dei loro amici per poi
 farne l'unione e scegliere da tale insieme i 5 attori da usare come amici. Viene implementato dagli attori "friendship" e, per quanto riguarda la sola risposta, dall'attore speciale `wellKnown`.
 
 - `{getFriends, PID1, PID2, Ref}` inviato da un attore "friendship" (il cui PID è `PID1`) di un'automobile all'attore "friendship" di un'altra automobile. `PID2` è il PID dell'attore "state" dell'automobile mittente. `Ref` è una nuova reference che identifica la richiesta
-- `{myFriends, PIDLIST, Ref}` è la risposta al messaggio precedente, inviata al PID `PID1` contenuto nel messaggio di richiesta. `Ref` è la reference ricevuta nella richiesta. `PIDLIST` è la lista di PID degli amici, intesa come PID degli attori "state".
+- `{myFriends, PIDSLIST, Ref}` è la risposta al messaggio precedente, inviata al PID `PID1` contenuto nel messaggio di richiesta. `Ref` è la reference ricevuta nella richiesta. `PIDSLIST` è la lista di coppie `{PIDF,PIDS}` degli amici, dove `PIDF` è il PID dell'attore "friendship" e `PIDS` quello dell'attore "state". 
+
 
 Per inizializzare la lista di amici o qual'ora gli amici degli amici non siano sufficienti a ripristinare l'insieme di 5 amici, la richiesta `getFriends` viene inviata all'attore `wellKnown`.
 
