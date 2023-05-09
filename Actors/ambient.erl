@@ -10,6 +10,7 @@
 			{isFree, PID, X, Y, Ref} -> %Request a car sends to the ambient 
 				io:format("Request from ~p for parking (~p,~p)~n",[PID,X,Y]), %DEBUG
 				PID ! {status, Ref, undefined =:= dict:fetch({X,Y}, Chessboard)}, %Reply to the car 
+				io:format("Reply to ~p with Ref ~p~n", [PID, Ref]), %DEBUG
 				io:format("Parking (~p,~p) is free: ~p~n", [X,Y, undefined =:= dict:fetch({X,Y}, Chessboard)]), %DEBUG
 				ambient(Chessboard);
 			{park, PID, X, Y, Ref} -> 

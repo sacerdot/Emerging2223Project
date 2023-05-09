@@ -45,7 +45,7 @@ order_chessboard(Chessboard) ->
 main(Chessboard, Dict) ->
     receive
         {position, PID, X, Y} -> 
-            timer:sleep(3000),
+            timer:sleep(3000), %Just for the print()
             Dict2 = dict:store(PID, {X,Y}, Dict),
             List = order_chessboard(dict:to_list(Dict2)),
             print_chessboard(Chessboard, List),

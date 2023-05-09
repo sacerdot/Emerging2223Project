@@ -1,20 +1,11 @@
 -module(car).
-    -export([main_car/2]).
-
-    %The main actor creates other actors and re-creates them if they fail
-    main_car(H, W) ->
-        {X_Spawn, Y_Spawn} = generate_coordinates(H, W),
-        {X_Goal, Y_Goal} = generate_coordinates(H, W),
-        %PID_S receive an empty dict()
-        PID_S = spawn(?MODULE, state, [dict:new(), X_Goal, Y_Goal, H, W]),
-        PID_D = spawn(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),
-        PID_F = spawn(?MODULE, friendship, []).
-        %TODO: handling respawn
+    -export([main_car/2, friendship/0, state/5, detect/7]).
 
     friendship() ->
         io:fwrite("CIAO\n").
 
     state(World_Knowledge, X_Goal, Y_Goal, H, W) ->
+        io:format("Start State~n"),
         receive
             {updateState, PID_D, X, Y, isFree} -> 
                 io:fwrite("Update Value for park (~p,~p), new value: ~p~n", [{X,Y}, isFree]), %Update parkings  
@@ -117,13 +108,16 @@
     %@param Y:  actual Y coordinate of the car
     %
     detect(X, Y, X_Goal, Y_Goal, H, W, PID_S) ->
-        %Check if we are on goal
+        io:format("Start Detect~n"),
+        link(PID_S),
         timer:sleep(2000),
         {X_New, Y_New} = move(X, Y, {X_Goal, Y_Goal}, H, W), %TODO: H and W must be passed as parameters? 
-        render ! 
+        render ! {position, self(), X_New, Y_New},
         Ref = make_ref(),
         ambient ! {isFree, self(), X_New, Y_New, Ref},
+        io:format("I'm here~n"),
         receive 
+            X -> io:format("X: ~p~n", [X]);
             {updateGoal, X_Goal_New, Y_Goal_New} ->  detect(X_New, Y_New, X_Goal_New, Y_Goal_New, H, W, PID_S);
             {status, Ref, isFree} -> 
                 PID_S ! {updateState, self(), X_New, Y_New, isFree},
@@ -131,7 +125,7 @@
                     {true, true} ->
                         Park_Ref = make_ref(),
                         ambient ! {park, self(), X_New, Y_New, Park_Ref},
-                        timer:sleep(random:uniform(5)*1000),
+                        timer:sleep(rand:uniform(5)*1000),
                         ambient ! {leave, self(), Park_Ref},
                         PID_S ! {askNewGoal, self(), Park_Ref},
                         receive
@@ -141,6 +135,29 @@
                     _ -> detect(X_New, Y_New, X_Goal, Y_Goal, H, W, PID_S)
                 end  
         end.
+
+    %The main actor creates other actors and re-creates them if they fail
+    main_car(H, W) ->
+        process_flag(trap_exit, true), 
+        {X_Spawn, Y_Spawn} = generate_coordinates(H, W),
+        {X_Goal, Y_Goal} = generate_coordinates(H, W),
+        io:format("X_Spawn: ~p, Y_Spawn: ~p~n", [X_Spawn, Y_Spawn]),
+        io:format("X_Goal: ~p, Y_Goal: ~p~n", [X_Goal, Y_Goal]),
+
+        Spawn_loop = fun Spawn_loop() ->
+            PID_S = spawn(?MODULE, state, [dict:new(), X_Goal, Y_Goal, H, W]),
+            {PID_D, Ref_monitor} = spawn_monitor(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),  
+            
+            receive
+                {'DOWN', Ref, _, PID, Reason } ->
+                    io:format("PID: ~p, Reason: ~p~n", [PID, Reason]),
+                    Spawn_loop();
+                X -> io:format("X: ~p~n", [X])
+                 
+            end
+        end,
+        Spawn_loop().
+     
 
        
 
