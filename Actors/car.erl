@@ -31,15 +31,17 @@
                 end;
             %Case Car Exit from the parking and needs new goal
             {askNewGoal, PID_D, Ref} -> 
-               {X_Goal_New, Y_Goal_New} = generate_coordinates(H, W), %TODO: check if new coordinates I generate should be free?
-                PID_D ! {responseNewGoal, X_Goal_New, Y_Goal_New, Ref};
+                io:format("Ask New Goal with Ref ~p~n",[Ref]),
+                {X_Goal_New, Y_Goal_New} = generate_coordinates(H, W), %TODO: check if new coordinates I generate should be free?
+                PID_D ! {responseNewGoal, X_Goal_New, Y_Goal_New, Ref},
+                state(World_Knowledge, X_Goal_New, Y_Goal_New, H, W);
 
             _ -> state( World_Knowledge, X_Goal, Y_Goal, H, W)
         end.
 
     generate_coordinates(H, W) ->
-        X = random:uniform(H),
-        Y = random:uniform(W),
+        X = rand:uniform(H)-1,
+        Y = rand:uniform(W)-1,
         {X, Y}.
 
 %L'attore "detect" di un'automobile sceglie un posteggio obiettivo libero interagendo con l'attore "state". Dopodichè, ogni 2s, si avvicina di una cella verso tale obiettivo. Se deve muoversi lungo entrambi gli assi (x e y), lo fa scegliendo randomicamente l'asse e muovendosi nella direzione che minimizza la distanza percorsa.
@@ -55,6 +57,7 @@
     compute_X_movement(X, X_Goal, H) ->
         D_pos = abs(X_Goal - ((X+1) rem H)), 
         D_neg = abs(X_Goal - ((X-1) rem H)),
+        io:format("X: D_pos: ~p, D_neg: ~p~n", [D_pos, D_neg]),
         case D_pos =< D_neg of
             true -> 1;
             false -> -1
@@ -71,6 +74,7 @@
     compute_Y_movement(Y, Y_Goal, W) ->
         D_pos = abs(Y_Goal - ((Y+1) rem W)), 
         D_neg = abs(Y_Goal - ((Y-1) rem W)),
+        io:format("Y: D_pos: ~p, D_neg: ~p~n", [D_pos, D_neg]),
         case D_pos =< D_neg of
             true -> 1;
             false -> -1
@@ -94,13 +98,13 @@
             {true, true} -> 
                 {X, Y};
             {true, false}-> 
-                {X, (Y + compute_Y_movement(Y, Y_Goal, W)) rem W};
+                {X, (Y + compute_Y_movement(Y, Y_Goal, W)) rem (W)};
             {false, true} -> 
-                {(X + compute_X_movement(X, X_Goal, H)) rem H, Y};
+                {(X + compute_X_movement(X, X_Goal, H)) rem (H), Y};
             {false, false} ->
                 case random:uniform(2) of
-                    1 -> {(X + compute_X_movement(X, X_Goal, H)) rem H, Y};
-                    2 -> {X, (Y + compute_Y_movement(Y, Y_Goal, W)) rem W}
+                    1 -> {(X + compute_X_movement(X, X_Goal, H+1)) rem (H), Y};
+                    2 -> {X, (Y + compute_Y_movement(Y, Y_Goal, W+1)) rem (W)}
                 end
         end. 
     %%%%%%
@@ -108,19 +112,21 @@
     %@param Y:  actual Y coordinate of the car
     %
     detect(X, Y, X_Goal, Y_Goal, H, W, PID_S) ->
-        io:format("Start Detect~n"),
+        io:format("Start Detect with goal (~p,~p)~n", [X_Goal, Y_Goal]),
         link(PID_S),
         timer:sleep(2000),
         {X_New, Y_New} = move(X, Y, {X_Goal, Y_Goal}, H, W), %TODO: H and W must be passed as parameters? 
         render ! {position, self(), X_New, Y_New},
+        timer:sleep(5000), %TODO: just for debug()
         Ref = make_ref(),
+        io:format("Ref ~p~n", [Ref]),
         ambient ! {isFree, self(), X_New, Y_New, Ref},
-        io:format("I'm here~n"),
+        io:format("I'm here ~p~n",[self()]),
         receive 
-            X -> io:format("X: ~p~n", [X]);
             {updateGoal, X_Goal_New, Y_Goal_New} ->  detect(X_New, Y_New, X_Goal_New, Y_Goal_New, H, W, PID_S);
-            {status, Ref, isFree} -> 
-                PID_S ! {updateState, self(), X_New, Y_New, isFree},
+            {status, Ref, IsFree} -> 
+                io:format("Received status ~p with Ref ~p~n", [IsFree, Ref]),
+                PID_S ! {updateState, self(), X_New, Y_New, IsFree},
                 case {X_New =:= X_Goal, Y_New =:= Y_Goal} of
                     {true, true} ->
                         Park_Ref = make_ref(),
@@ -129,11 +135,15 @@
                         ambient ! {leave, self(), Park_Ref},
                         PID_S ! {askNewGoal, self(), Park_Ref},
                         receive
-                            {responseNewGoal, X_Goal_New, Y_Goal_New, Ref} ->
-                                detect(X_New, Y_New, X_Goal_New, Y_Goal_New, H, W, PID_S)
+                            {responseNewGoal, X_Goal_New, Y_Goal_New, Park_Ref} ->
+                                io:format("Received new goal (~p, ~p) with Ref: ~p~n", [X_Goal_New, Y_Goal_New, Park_Ref]),
+                                detect(X_New, Y_New, X_Goal_New, Y_Goal_New, H, W, PID_S);
+                            Msg -> io:fwrite("MSG: ~p~n",[Msg]) %TODO: Kill process?
                         end;
                     _ -> detect(X_New, Y_New, X_Goal, Y_Goal, H, W, PID_S)
-                end  
+                
+                end; 
+            _ -> io:fwrite("No Pattern Matching Found~n") %TODO: Kill process?
         end.
 
     %The main actor creates other actors and re-creates them if they fail
@@ -147,10 +157,10 @@
         Spawn_loop = fun Spawn_loop() ->
             PID_S = spawn(?MODULE, state, [dict:new(), X_Goal, Y_Goal, H, W]),
             {PID_D, Ref_monitor} = spawn_monitor(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),  
-            
+            render ! {position, PID_D, X_Spawn, Y_Spawn},
             receive
-                {'DOWN', Ref, _, PID, Reason } ->
-                    io:format("PID: ~p, Reason: ~p~n", [PID, Reason]),
+                {'DOWN', _, _, PID, Reason } ->
+                    io:format("Died PID: ~p, Reason: ~p~n", [PID, Reason]),
                     Spawn_loop();
                 X -> io:format("X: ~p~n", [X])
                  
