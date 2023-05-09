@@ -137,6 +137,7 @@
                         receive
                             {responseNewGoal, X_Goal_New, Y_Goal_New, Park_Ref} ->
                                 io:format("Received new goal (~p, ~p) with Ref: ~p~n", [X_Goal_New, Y_Goal_New, Park_Ref]),
+                                render ! {target, self(), X_Goal_New, Y_Goal_New},
                                 detect(X_New, Y_New, X_Goal_New, Y_Goal_New, H, W, PID_S);
                             Msg -> io:fwrite("MSG: ~p~n",[Msg]) %TODO: Kill process?
                         end;
@@ -157,6 +158,7 @@
         Spawn_loop = fun Spawn_loop() ->
             PID_S = spawn(?MODULE, state, [dict:new(), X_Goal, Y_Goal, H, W]),
             {PID_D, Ref_monitor} = spawn_monitor(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),  
+            render ! {target, PID_D, X_Goal, Y_Goal},
             render ! {position, PID_D, X_Spawn, Y_Spawn},
             receive
                 {'DOWN', _, _, PID, Reason } ->
