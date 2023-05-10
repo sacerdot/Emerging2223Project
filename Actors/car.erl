@@ -1,40 +1,50 @@
 -module(car).
     -export([main_car/2, friendship/3, state/5, detect/7, getFriends/2]).
 
-
-
-    friendship(FriendsList, RefList, PID_S) when lenght(FriendsList) < 5 ->
-        L = length(FriendsList),
-        Ref = make_ref(),
-        case L of 
-            0 -> wellknown ! {getFriends, self(), PID_S ,Ref};
-            _ ->   getFriends(FriendList, RefList)
-        end
+    receive_friends(FriendsList, RefList, L) ->
         receive
-           {myFriends, PIDSLIST, Ref} ->
+            {myFriends, PIDSLIST, Ref} ->
                 %Demonitor the old friends from refList
                 lists:foreach(fun(X) -> demonitor(X) end, RefList),
-                TotalFriends = PIDSLIST ++ FriendsList,
+                %Add the new friends to the list
+                TotalFriends = lists:usort(PIDSLIST ++ FriendsList),
                 %Create a list choosing 5 random friends from TotalFriends
                 FriendList2 = lists:sublist([Y||{_,Y} <- lists:sort([ {rand:uniform(), N} || N <- TotalFriends])], 5),
                 %Monitor all the friends in the list and save the ref in RefList
                 RefList2 = lists:map(fun({PIDF, _}) -> monitor(process, PIDF) end, FriendList2),
-                friendship(FriendList2, RefList2, PID_S)
+                case lenght(FriendList2) < 5 of
+                    true -> getFriends(FriendList2, RefList2, L);
+                    false -> {FriendList2, RefList2}
+                end
         end.
 
-    getFriends(FriendsList, RefList) ->
-        receive
-           {myFriends, PIDSLIST, Ref} ->
-                %Demonitor the old friends from refList
-                lists:foreach(fun(X) -> demonitor(X) end, RefList),
-                TotalFriends = PIDSLIST ++ FriendsList,
-                %Create a list choosing 5 random friends from TotalFriends
-                FriendList2 = lists:sublist([Y||{_,Y} <- lists:sort([ {rand:uniform(), N} || N <- TotalFriends])], 5),
-                %Monitor all the friends in the list and save the ref in RefList
-                RefList2 = lists:map(fun({PIDF, _}) -> monitor(process, PIDF) end, FriendList2),
+
+    getFriends(FriendsList, RefList, L) ->
+        Lenght = lenght(L),
+        case Lenght of
+            0 -> 
+                Ref = make_ref(),
+                wellknown ! {getFriends, self(), PID_S, Ref},
+                receive_friends(FriendsList, RefList);
+            5 -> 
+                {FriendsList, RefList};
+            _ -> 
+                %pick a random friend from the list
+                {PIDF, _} = lists:nth(rand:uniform(Lenght), L),
+                %delete the friend from the list
+                L2 = lists:delete({PIDF, _}, L),
+                Ref = make_ref(),
+                PIDF ! {getFriends, self(), PID_S, Ref},
+                receive_friends(FriendsList, RefList, L2)
         end.
+        
+
+
+    friendship(FriendsList, RefList, PID_S) ->
+        {FriendList2, RefList2} = getFriends(FriendsList, RefList, FriendsList),
+        friendship(FriendList2, RefList2, PID_S).
+
                 
-
     state(World_Knowledge, X_Goal, Y_Goal, H, W) ->
         io:format("Start State~n"),
         receive
@@ -187,10 +197,11 @@
         io:format("X_Goal: ~p, Y_Goal: ~p~n", [X_Goal, Y_Goal]),
 
         Spawn_loop = fun Spawn_loop() ->
-            PID_S = spawn(?MODULE, state, [dict:new(), X_Goal, Y_Goal, H, W]),
-            {PID_D, Ref_monitor} = spawn_monitor(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),  
-            render ! {target, PID_D, X_Goal, Y_Goal},
-            render ! {position, PID_D, X_Spawn, Y_Spawn},
+            %PID_S = spawn(?MODULE, state, [dict:new(), X_Goal, Y_Goal, H, W]),
+            %{PID_D, Ref_monitor} = spawn_monitor(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),
+            {PID_F, Ref_monitor} = spawn_monitor(?MODULE, friendship, [[],[], rand:uniform(100)]),  
+            %render ! {target, PID_D, X_Goal, Y_Goal},
+            %render ! {position, PID_D, X_Spawn, Y_Spawn},
             receive
                 {'DOWN', _, _, PID, Reason } ->
                     io:format("Died PID: ~p, Reason: ~p~n", [PID, Reason]),
