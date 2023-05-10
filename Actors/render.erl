@@ -21,8 +21,6 @@ print_chessboard([{X,Y}|T], DictToList) ->
    
     %io:format("A IS EQUAL TO ~p~n", [Dict]),
     print_chessboard(T, DictToList );
-
-
 print_chessboard([],_)-> io:format("\n").
 
 
@@ -62,7 +60,7 @@ main(Chessboard, Dict) ->
             end,
             DictToList = dict:to_list(Dict2),
             DictToList2 = lists:map(fun({A, {B,C}}) -> {A,B,C} end, DictToList),
-            print_list(DictToList2),
+            %print_list(DictToList2),
             print_chessboard(Chessboard, DictToList2),
             main(Chessboard, Dict2);
         % target position of goal sent by detect
@@ -77,7 +75,16 @@ main(Chessboard, Dict) ->
             end,
             DictToList = dict:to_list(Dict2),
             DictToList2 = lists:map(fun({A, {B,C}}) -> {A,B,C} end, DictToList),
-            print_list(DictToList2),
+            %print_list(DictToList2),
             print_chessboard(Chessboard, DictToList2),
-            main(Chessboard, Dict2)
+            main(Chessboard, Dict2);
+        %sent by ambient when car park or restart
+        {parked, PID, X, Y, IsParked} -> 
+            io:format("RENDER: Car ~p is parked at (~p, ~p): ~p~n", [PID, X, Y, IsParked]),
+            main(Chessboard, Dict);
+        %sent by friendship actor TODO: implement this 
+        {friendship, PID, PIDLIST} -> 
+            io:format("RENDER: Car ~p is friend with ~p~n", [PID, PIDLIST]),
+            main(Chessboard, Dict)
+
     end. 

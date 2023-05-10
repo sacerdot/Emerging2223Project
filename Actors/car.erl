@@ -1,8 +1,39 @@
 -module(car).
-    -export([main_car/2, friendship/0, state/5, detect/7]).
+    -export([main_car/2, friendship/3, state/5, detect/7, getFriends/2]).
 
-    friendship() ->
-        io:fwrite("CIAO\n").
+
+
+    friendship(FriendsList, RefList, PID_S) when lenght(FriendsList) < 5 ->
+        L = length(FriendsList),
+        Ref = make_ref(),
+        case L of 
+            0 -> wellknown ! {getFriends, self(), PID_S ,Ref};
+            _ ->   getFriends(FriendList, RefList)
+        end
+        receive
+           {myFriends, PIDSLIST, Ref} ->
+                %Demonitor the old friends from refList
+                lists:foreach(fun(X) -> demonitor(X) end, RefList),
+                TotalFriends = PIDSLIST ++ FriendsList,
+                %Create a list choosing 5 random friends from TotalFriends
+                FriendList2 = lists:sublist([Y||{_,Y} <- lists:sort([ {rand:uniform(), N} || N <- TotalFriends])], 5),
+                %Monitor all the friends in the list and save the ref in RefList
+                RefList2 = lists:map(fun({PIDF, _}) -> monitor(process, PIDF) end, FriendList2),
+                friendship(FriendList2, RefList2, PID_S)
+        end.
+
+    getFriends(FriendsList, RefList) ->
+        receive
+           {myFriends, PIDSLIST, Ref} ->
+                %Demonitor the old friends from refList
+                lists:foreach(fun(X) -> demonitor(X) end, RefList),
+                TotalFriends = PIDSLIST ++ FriendsList,
+                %Create a list choosing 5 random friends from TotalFriends
+                FriendList2 = lists:sublist([Y||{_,Y} <- lists:sort([ {rand:uniform(), N} || N <- TotalFriends])], 5),
+                %Monitor all the friends in the list and save the ref in RefList
+                RefList2 = lists:map(fun({PIDF, _}) -> monitor(process, PIDF) end, FriendList2),
+        end.
+                
 
     state(World_Knowledge, X_Goal, Y_Goal, H, W) ->
         io:format("Start State~n"),
@@ -57,7 +88,7 @@
     compute_X_movement(X, X_Goal, H) ->
         D_pos = abs(X_Goal - ((X+1) rem H)), 
         D_neg = abs(X_Goal - ((X-1) rem H)),
-        io:format("X: D_pos: ~p, D_neg: ~p~n", [D_pos, D_neg]),
+        %io:format("X: D_pos: ~p, D_neg: ~p~n", [D_pos, D_neg]),
         case D_pos =< D_neg of
             true -> 1;
             false -> -1
@@ -74,7 +105,7 @@
     compute_Y_movement(Y, Y_Goal, W) ->
         D_pos = abs(Y_Goal - ((Y+1) rem W)), 
         D_neg = abs(Y_Goal - ((Y-1) rem W)),
-        io:format("Y: D_pos: ~p, D_neg: ~p~n", [D_pos, D_neg]),
+        %io:format("Y: D_pos: ~p, D_neg: ~p~n", [D_pos, D_neg]),
         case D_pos =< D_neg of
             true -> 1;
             false -> -1
@@ -119,13 +150,13 @@
         render ! {position, self(), X_New, Y_New},
         timer:sleep(5000), %TODO: just for debug()
         Ref = make_ref(),
-        io:format("Ref ~p~n", [Ref]),
+        %io:format("Ref ~p~n", [Ref]),
         ambient ! {isFree, self(), X_New, Y_New, Ref},
-        io:format("I'm here ~p~n",[self()]),
+        %io:format("I'm here ~p~n",[self()]),
         receive 
             {updateGoal, X_Goal_New, Y_Goal_New} ->  detect(X_New, Y_New, X_Goal_New, Y_Goal_New, H, W, PID_S);
             {status, Ref, IsFree} -> 
-                io:format("Received status ~p with Ref ~p~n", [IsFree, Ref]),
+                %io:format("Received status ~p with Ref ~p~n", [IsFree, Ref]),
                 PID_S ! {updateState, self(), X_New, Y_New, IsFree},
                 case {X_New =:= X_Goal, Y_New =:= Y_Goal} of
                     {true, true} ->

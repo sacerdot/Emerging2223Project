@@ -8,29 +8,27 @@
 	ambient(Chessboard) -> 
 		receive
 			{isFree, PID, X, Y, Ref} -> %Request a car sends to the ambient 
-				io:format("A: Request from ~p for parking (~p,~p)~n",[PID,X,Y]), %DEBUG
-				io:format("A: Parking (~p,~p) is free: ~p~n", [X,Y, undefined =:= dict:fetch({X,Y}, Chessboard)]), %DEBUG
-				io:format("A: Reply to ~p with Ref ~p~n", [PID, Ref]), %DEBUG
+				io:format("AMB: Request from ~p for parking (~p,~p)~n",[PID,X,Y]), %DEBUG
+				io:format("AMB: Parking (~p,~p) is free: ~p~n", [X,Y, undefined =:= dict:fetch({X,Y}, Chessboard)]), %DEBUG
+				io:format("AMB: Reply to ~p with Ref ~p~n", [PID, Ref]), %DEBUG
 				PID ! {status, Ref, undefined =:= dict:fetch({X,Y}, Chessboard)}, %Reply to the car 
 				ambient(Chessboard);
 			{park, PID, X, Y, Ref} -> 
-				io:fwrite("A: Update Value for park ~p occupied by ~p~n", [{X,Y}, PID]), %Update parkings  
+				io:fwrite("AMB: Update Value for park ~p occupied by ~p~n", [{X,Y}, PID]), %Update parkings  
+				render ! {parked, PID, X, Y, true}, %DEBUG
 				ambient(dict:store({X,Y}, PID, Chessboard));
 			{leave, PID, Ref} -> 
-				io:fwrite("A: PID ~p exit from parking ~n", [PID]), %Update parkings
+				io:fwrite("AMB: PID ~p exit from parking ~n", [PID]), %Update parkings
 				case searchKey(Chessboard, PID) of
 					{X, Y} -> 
-						io:fwrite("A: Update Value for leave ~p free~n", [{X,Y}]), %Update parkings
+						io:fwrite("AMB: Update Value for leave ~p free~n", [{X,Y}]), %Update parkings
+						render ! {parked, PID, X, Y, false},
 						ambient(dict:store({X,Y}, undefined, Chessboard));
 					[] -> 
-						io:fwrite("A: PID: ~p not parked before ~n", [PID]),
+						io:fwrite("AMB: PID: ~p not parked before ~n", [PID]),
 						ambient(Chessboard)
 				end;
-			draw -> 
-				io:fwrite("A: Entered Draw ~n"), %DEBUG
-				render ! {dict:to_list(Chessboard)},
-				ambient(Chessboard);                  %DEBUG
-			_ -> io:fwrite("A: No Pattern Matching Found!\n")
+			_ -> io:fwrite("AMB: No Pattern Matching Found!\n")
 		end.
 	
 	%%%%%%
@@ -59,16 +57,16 @@
 		%Chessboard Definition
 		Chessboard = dict:from_list([{{X, Y}, undefined} || X <- lists:seq(0, H-1), Y <- lists:seq(0, W-1)]),
 		printDict(Chessboard), %DEBUG
-		io:format("Chessboard size ~p~n", [dict:size(Chessboard)]),
+		io:format("AMB: Chessboard size ~p~n", [dict:size(Chessboard)]),
 		
 		%Spawn the render actor
 		PID_R = spawn(render, main, [[{X, Y} || X <- lists:seq(0, H-1), Y <- lists:seq(0, W-1)], dict:new()]),
 		register(render, PID_R),
-		io:format("Correctly registered ~p as 'render' ~n", [PID_R]), %DEBUG
+		io:format("AMB: Correctly registered ~p as 'render' ~n", [PID_R]), %DEBUG
 		render ! {dict:to_list(Chessboard)}, %DEBUG
 		
 		%Spawn ambient actor 
 		PID_A = spawn(?MODULE, ambient, [Chessboard]), %spawn the ambient actor
-		io:format("Ambient PID: ~p~n", [PID_A]), %DEBUG
+		io:format("AMB: Ambient PID: ~p~n", [PID_A]), %DEBUG
 	    register(ambient, PID_A), %register the ambient actor with the name ambient
-	    io:format("Correctly registered ~p as 'ambient' ~n", [PID_A]). %DEBUG
+	    io:format("AMB: Correctly registered ~p as 'ambient' ~n", [PID_A]). %DEBUG
