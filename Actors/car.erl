@@ -12,11 +12,13 @@
                 FriendList2 = lists:sublist([Y||{_,Y} <- lists:sort([ {rand:uniform(), N} || N <- TotalFriends])], 5),
                 %Monitor all the friends in the list and save the ref in RefList
                 RefList2 = lists:map(fun({PIDF, _}) -> monitor(process, PIDF) end, FriendList2),
+                io:format("FRI: I'm ~p my friends are:~p~n ", [self(), FriendList2]),
                 case length(FriendList2) < 5 of
                     true -> getFriends(FriendList2, RefList2, L, PID_S);
                     false -> {FriendList2, RefList2}
                 end
-        end.
+        end,
+        timer:sleep(5000).
 
 
     getFriends(FriendsList, RefList, L, PID_S) ->
@@ -39,6 +41,8 @@
         end.
         
     friendship(FriendsList, RefList, PID_S) ->
+        %io:format("FRI: start friendship with PID: ~p~n", [self()]),
+        link(PID_S),
         {FriendList2, RefList2} = getFriends(FriendsList, RefList, FriendsList, PID_S),
         friendship(FriendList2, RefList2, PID_S).
 
@@ -197,7 +201,7 @@
         Spawn_loop = fun Spawn_loop() ->
             PID_S = spawn(?MODULE, state, [dict:new(), X_Goal, Y_Goal, H, W]),
             {PID_D, Ref_monitor} = spawn_monitor(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),
-            {PID_F, Ref_monitor} = spawn_monitor(?MODULE, friendship, [[],[], rand:uniform(100)]),  
+            PID_F  = spawn(?MODULE, friendship, [[],[], PID_S]), 
             render ! {target, PID_D, X_Goal, Y_Goal},
             render ! {position, PID_D, X_Spawn, Y_Spawn},
             receive
