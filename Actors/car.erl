@@ -12,13 +12,14 @@
                 FriendList2 = lists:sublist([Y||{_,Y} <- lists:sort([ {rand:uniform(), N} || N <- TotalFriends])], 5),
                 %Monitor all the friends in the list and save the ref in RefList
                 RefList2 = lists:map(fun({PIDF, _}) -> monitor(process, PIDF) end, FriendList2),
-                io:format("FRI: I'm ~p my friends are:~p~n ", [self(), FriendList2]),
+                %io:format("FRI: I'm ~p my friends are:~p~n ", [self(), FriendList2]),
+                timer:sleep(5000),
                 case length(FriendList2) < 5 of
                     true -> getFriends(FriendList2, RefList2, L, PID_S);
                     false -> {FriendList2, RefList2}
                 end
-        end,
-        timer:sleep(5000).
+        end.
+        
 
 
     getFriends(FriendsList, RefList, L, PID_S) ->
@@ -34,6 +35,7 @@
                 %pick a random friend from the list
                 {PIDF, _} = lists:nth(rand:uniform(Lenght), L),
                 %delete the friend from the list
+                io:format("FRI: I'm ~p I'm sending getFriends to ~p~n", [self(), PIDF]),
                 L2 = [ {PIDFR, PIDSTATE} || {PIDFR, PIDSTATE} <- L, PIDFR =/= PIDF],
                 Ref = make_ref(),
                 PIDF ! {getFriends, self(), PID_S, Ref},
@@ -42,9 +44,26 @@
         
     friendship(FriendsList, RefList, PID_S) ->
         %io:format("FRI: start friendship with PID: ~p~n", [self()]),
-        link(PID_S),
-        {FriendList2, RefList2} = getFriends(FriendsList, RefList, FriendsList, PID_S),
-        friendship(FriendList2, RefList2, PID_S).
+        %link(PID_S),
+        case length(FriendsList) of 
+            5 ->
+                io:format("FRI: I'm ~p I have 5 friends:~p~n ", [self(), FriendsList]),
+                receive 
+                    {getFriends, PIDF, PIDS, Ref} ->
+                        io:format("FRI: I'm ~p receiving get friends from ~p~n", [self(), PIDF]),
+                        PIDF ! {myFriends, FriendsList, Ref},
+                        friendship(FriendsList, RefList, PID_S);
+                    %case a friend dies
+                    {'DOWN', _, _, PID, Reason } ->
+                        io:format("FRI: Died PID: ~p, Reason: ~p~n", [PID, Reason]),
+                        %delete the friend from the list
+                        L2 = [ {PIDFR, PIDSTATE} || {PIDFR, PIDSTATE} <- FriendsList, PIDFR =/= PID],
+                        friendship(L2, RefList, PID_S)
+                end;
+            _ ->
+                {FriendList2, RefList2} = getFriends(FriendsList, RefList, FriendsList, PID_S),
+                friendship(FriendList2, RefList2, PID_S)
+        end.
 
                 
     state(World_Knowledge, X_Goal, Y_Goal, H, W) ->
@@ -195,24 +214,24 @@
         process_flag(trap_exit, true), 
         {X_Spawn, Y_Spawn} = generate_coordinates(H, W),
         {X_Goal, Y_Goal} = generate_coordinates(H, W),
-        io:format("X_Spawn: ~p, Y_Spawn: ~p~n", [X_Spawn, Y_Spawn]),
-        io:format("X_Goal: ~p, Y_Goal: ~p~n", [X_Goal, Y_Goal]),
+        %io:format("X_Spawn: ~p, Y_Spawn: ~p~n", [X_Spawn, Y_Spawn]),
+        %io:format("X_Goal: ~p, Y_Goal: ~p~n", [X_Goal, Y_Goal]),
 
-        Spawn_loop = fun Spawn_loop() ->
-            PID_S = spawn(?MODULE, state, [dict:new(), X_Goal, Y_Goal, H, W]),
-            {PID_D, Ref_monitor} = spawn_monitor(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),
-            PID_F  = spawn(?MODULE, friendship, [[],[], PID_S]), 
-            render ! {target, PID_D, X_Goal, Y_Goal},
-            render ! {position, PID_D, X_Spawn, Y_Spawn},
-            receive
-                {'DOWN', _, _, PID, Reason } ->
-                    io:format("Died PID: ~p, Reason: ~p~n", [PID, Reason]),
-                    Spawn_loop();
-                X -> io:format("X: ~p~n", [X])
+        %Spawn_loop = fun Spawn_loop() ->
+            %PID_S = spawn(?MODULE, state, [dict:new(), X_Goal, Y_Goal, H, W]),
+            %{PID_D, Ref_monitor} = spawn_monitor(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),
+            PID_F  = spawn(?MODULE, friendship, [[],[], 10]).
+            %render ! {target, PID_D, X_Goal, Y_Goal},
+            %render ! {position, PID_D, X_Spawn, Y_Spawn},
+            %receive
+             %   {'DOWN', _, _, PID, Reason } ->
+              %      io:format("Died PID: ~p, Reason: ~p~n", [PID, Reason]),
+               %     Spawn_loop();
+               % X -> io:format("X: ~p~n", [X])
                  
-            end
-        end,
-        Spawn_loop().
+           % end
+        %end,
+        %Spawn_loop().
      
 
        

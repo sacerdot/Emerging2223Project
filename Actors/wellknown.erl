@@ -8,9 +8,9 @@ wellknown(PIDSLIST) ->
         %PID1 is the PID of friendship actor, PID2 is the PID of state actor
         {getFriends, PID1, PID2, Ref} ->
             io:format("WK: getFriends received from PID: ~p~n", [PID1]),
-            PIDSLIST2 = [ {PIDF, PIDS} || {PIDF, PIDS} <- PIDSLIST, PIDF =/= PID1, PIDS=/=PID2],
+            PIDSLIST2 = [ {PIDF, PIDS} || {PIDF, PIDS} <- PIDSLIST, PIDF =/= PID1],
             PID1 ! {myFriends, PIDSLIST2, Ref},
-            io:format("WK: Sent myFriends to PID: ~p, myFriends:~p~n", [PID1, PIDSLIST]),
+            %io:format("WK: Sent myFriends to PID: ~p, myFriends:~p~n", [PID1, PIDSLIST]),
             case lists:member({PID1, PID2}, PIDSLIST) of 
                 true ->  wellknown(PIDSLIST);
                 false ->
@@ -31,18 +31,30 @@ main() ->
     PID_W = spawn(?MODULE, wellknown, [[]]),
     register(wellknown, PID_W),
     io:format("WN: Wellknown started with PID ~p registered with wellknown~n", [PID_W]),
-    Spawn_loop = fun Spawn_loop(N) ->
-            io:format("WN: Spawned car~n"),
-            {PID_F, Ref_monitor} = spawn_monitor(car, main_car, [5,5]),  
-            timer:sleep(5000),
-            case n > 0 of
-                true -> Spawn_loop(N-1);
-                false ->  receive
+    Spawn_loop = fun Spawn_loop(N, List) ->
+            
+            case N > 0 of
+                true -> 
+                    {PID_F, Ref_monitor} = spawn_monitor(car, friendship, [[],[],10]),  
+                    io:format("WN: Spawned car with PID: ~p~n", [PID_F]),
+                    List2 = lists:append(List, [PID_F]),
+                    timer:sleep(5000),
+                    Spawn_loop(N-1, List2);
+                false ->  
+                        %choose the first car from the list, kill and remove it 
+                        case length(List) of 
+                            12 ->
+                                PID_F2 = lists:nth(7, List),
+                                exit(PID_F2, kill),
+                                List3 = [ {PIDF, PIDS} || {PIDF, PIDS} <- List, PIDF =/= PID_F2],
+                                Spawn_loop(0, List3);
+                            _-> ok
+                        end,
+                        receive
                             {'DOWN', _, _, PID, Reason } ->
-                                io:format("Died PID: ~p, Reason: ~p~n", [PID, Reason]),
-                                Spawn_loop(1);
-                                X -> io:format("X: ~p~n", [X])
+                                io:format("WN: Died PID: ~p, Reason: ~p~n", [PID, Reason]),
+                                Spawn_loop(0, List)
                             end %end of receive
             end %end of case
         end, % end of fun
-        Spawn_loop(10).
+        Spawn_loop(12, []).
