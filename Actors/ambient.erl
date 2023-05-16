@@ -70,3 +70,4 @@
 		io:format("AMB: Ambient PID: ~p~n", [PID_A]), %DEBUG
 	    register(ambient, PID_A), %register the ambient actor with the name ambient
 	    io:format("AMB: Correctly registered ~p as 'ambient' ~n", [PID_A]). %DEBUG
+		

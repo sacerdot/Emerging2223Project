@@ -32,7 +32,6 @@ main() ->
     register(wellknown, PID_W),
     io:format("WN: Wellknown started with PID ~p registered with wellknown~n", [PID_W]),
     Spawn_loop = fun Spawn_loop(N, List) ->
-            
             case N > 0 of
                 true -> 
                     {PID_F, Ref_monitor} = spawn_monitor(car, friendship, [[],[],10]),  
