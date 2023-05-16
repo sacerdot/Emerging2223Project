@@ -2,46 +2,69 @@
 -export([main/0]).
 
 main() ->
-    H = 5,
-    W = 5,
+    H = 10,
+    W = 10,
     Chessboard = dict:from_list([{{X, Y}, undefined} || X <- lists:seq(0, H-1), Y <- lists:seq(0, W-1)]),
 	
-    PID_R = spawn(render, main, [[{X, Y} || X <- lists:seq(0, H-1), Y <- lists:seq(0, W-1)], dict:new()]),
-    register(render, PID_R),
-    io:format("MAIN: Correctly registered ~p as 'render' ~n", [PID_R]), %DEBUG
-    render ! {dict:to_list(Chessboard)}, %DEBUG
     
-    PID_A = spawn(ambient, ambient, [Chessboard]), %spawn the ambient actor
-    register(ambient, PID_A), %register the ambient actor with the name ambient
-    io:format("MAIN: Correctly registered ~p as 'ambient' ~n", [PID_A]), %DEBUG
-
-    PID_W = spawn(wellknown, wellknown, [[]]),
-    register(wellknown, PID_W),
-    io:format("MAIN: Wellknown started with PID ~p registered with wellknown~n", [PID_W]),
-
+    PID_A = ambient:main(Chessboard), %spawn the ambient actor
+    PID_W = wellknown:main(),
+    PID_R = render:main([{X, Y} || X <- lists:seq(0, H-1), Y <- lists:seq(0, W-1)], dict:new()),
+    
     Spawn_loop = fun Spawn_loop(N, List) ->
         case N > 0 of
             true -> 
                 {PID_M, Ref_monitor} = spawn_monitor(car, main, [H,W]),  
-                io:format("WN: Spawned car with PID: ~p~n", [PID_M]),
+                io:format("MAIN: Spawned car with PID: ~p~n", [PID_M]),
                 List2 = lists:append(List, [PID_M]),
                 timer:sleep(5000),
                 Spawn_loop(N-1, List2);
             false ->  
-                    %choose the first car from the list, kill and remove it 
-                    case length(List) of 
-                        12 ->
-                            PID_M2 = lists:nth(7, List),
-                            exit(PID_M2, kill),
-                            List3 = [ {PIDF, PIDS} || {PIDF, PIDS} <- List, PIDF =/= PID_M2],
-                            Spawn_loop(0, List3);
-                        _-> ok
-                    end,
-                    receive
-                        {'DOWN', _, _, PID, Reason } ->
-                            io:format("WN: Died PID: ~p, Reason: ~p~n", [PID, Reason]),
-                            Spawn_loop(0, List)
-                        end %end of receive
-        end %end of case
-    end, % end of fun
-    Spawn_loop(12, []).
+                List
+        end
+    end,
+    List = Spawn_loop(6, []),
+
+    Kill_spawn_loop = fun Kill_spawn_loop(CarList) ->
+        %choose the first car from the list, kill and remove it 
+        %N_Cars = rand:uniform(4),
+        N_Cars = 1,
+
+        Kill_Loop = fun Kill_Loop(N_Cars_to_Kill, CarList2) ->
+            case N_Cars_to_Kill > 0 of
+                true ->
+                    %Choose randomly a car to kill
+                    PID_M2 = lists:nth(rand:uniform(length(CarList2)), CarList2),
+                    exit(PID_M2, kill),
+                    io:format("MAIN: Killed car with PID: ~p~n", [PID_M2]),
+                    CarList3 = [ {PIDF, PIDS} || {PIDF, PIDS} <- CarList2, PIDF =/= PID_M2],
+                    Kill_Loop(N_Cars_to_Kill-1, CarList3);
+                false ->
+                    CarList2
+            end
+        end,
+
+        NewList =  Kill_Loop(N_Cars, CarList),
+        Spawn_Loop = fun Spawn_Loop(N_Cars_to_Spawn, CarList2) ->
+            case N_Cars_to_Spawn > 0 of
+                true ->
+                    {PID_M, Ref_monitor} = spawn_monitor(car, main, [H,W]),  
+                    io:format("MAIN: Spawned car with PID: ~p~n", [PID_M]),
+                    CarList3 = lists:append(CarList2, [PID_M]),
+                    timer:sleep(5000),
+                    Spawn_loop(N_Cars_to_Spawn-1, CarList3);
+                false ->
+                    CarList2
+            end
+        end,
+        NewList2 = Spawn_Loop(N_Cars, NewList),
+        timer:sleep(10000),
+        Kill_spawn_loop(NewList2)
+    end,
+    Kill_spawn_loop(List).
+    
+                
+                
+                
+                
+    

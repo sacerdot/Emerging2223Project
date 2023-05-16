@@ -3,7 +3,7 @@
 
 % Path: Actors\render.erl
 -module(render).
--export([main/2, order_chessboard/1]).
+-export([main/2, render/3]).
 
 print_chessboard([{X,Y}|T], DictToList) ->
     case Y == 0 of
@@ -14,9 +14,9 @@ print_chessboard([{X,Y}|T], DictToList) ->
     B = lists:keyfind({X,Y}, 3, DictToList),
     case {A,B} of 
         {false, false} -> io:format("O\t");
-        {{_,{X,Y},_}, {_,_,{X,Y}}} -> io:format("X*\t");
-        {{_,{X,Y},_}, _} -> io:format("X\t");
-        {_ , {_,_,{X,Y}}} -> io:format("*\t")
+        {{_,{X,Y},_, ID}, {_,_,{X,Y}, ID}} -> io:format("*~p*\t", [ID]);
+        {{_,{X,Y},_, ID}, _} -> io:format("~p\t", [ID]);
+        {_ , {_,_,{X,Y}, ID}} -> io:format("~p*\t", [ID])
     end,
    
     %io:format("A IS EQUAL TO ~p~n", [Dict]),
@@ -24,67 +24,52 @@ print_chessboard([{X,Y}|T], DictToList) ->
 print_chessboard([],_)-> io:format("\n").
 
 
-%Function to print a list 
-print_list([H|T]) -> 
-    %map element of list {A, {B,C}} to {A, B, C}
-    io:fwrite("~p~n", [H]),
-    print_list(T);
-print_list([]) -> ok.
+transform_print(Chessboard, NewDict) ->
+    DictToList = dict:to_list(NewDict),
+    DictToList2 = lists:map(fun({A, {B,C,D}}) -> {A,B,C,D} end, DictToList),
+    print_chessboard(Chessboard, DictToList2).
 
 
-order_chessboard(Chessboard) ->
-    lists:sort(fun({_, {X1,Y1}}, { _, {X2,Y2}}) ->
-                                case X1 < X2 of
-                                    true -> true;
-                                    false -> 
-                                        case X1 == X2 of
-                                            true -> Y1 < Y2;
-                                            false -> false
-                                        end
-                                end
-                            end,
-                            Chessboard).
-
-main(Chessboard, Dict) ->
-    % PID -> {{POS},{GOAL}}     DICT STRUCTURE
+render(Chessboard, Dict, N) ->
+    % PID -> {{POS},{GOAL}, int}     DICT STRUCTURE
     receive
         % position of car sent by detect
         {position, PID, X, Y} -> 
             case dict:find(PID, Dict) of 
                 error -> 
-                    Dict2 = dict:store(PID, {{X,Y}, {undefined, undefined}}, Dict),
-                    Dict2;
-                {ok, {{_,_},{X_Goal, Y_Goal}}} ->
-                     Dict2 = dict:store(PID, {{X,Y},{X_Goal, Y_Goal}}, Dict),
-                     Dict2
-            end,
-            DictToList = dict:to_list(Dict2),
-            DictToList2 = lists:map(fun({A, {B,C}}) -> {A,B,C} end, DictToList),
-            %print_list(DictToList2),
-            print_chessboard(Chessboard, DictToList2),
-            main(Chessboard, Dict2);
+                    Dict2 = dict:store(PID, {{X,Y}, {undefined, undefined}, N}, Dict),
+                    transform_print(Chessboard, Dict2),
+                    render(Chessboard, Dict2, N+1);
+                {ok, {{_,_},{X_Goal, Y_Goal}, ID}} ->
+                    Dict2 = dict:store(PID, {{X,Y},{X_Goal, Y_Goal}, ID}, Dict),
+                    transform_print(Chessboard, Dict2),
+                    render(Chessboard, Dict2, N)
+            end;
+            
         % target position of goal sent by detect
         {target, PID, X, Y} ->    
             case dict:find(PID, Dict) of 
                 error -> 
-                    Dict2 = dict:store(PID, {{undefined, undefined},{X,Y}}, Dict),
-                    Dict2;
-                {ok, {{X_Pos, Y_Pos}, {_,_}}} ->
-                     Dict2 = dict:store(PID, {{X_Pos, Y_Pos},{X,Y}}, Dict),
-                     Dict2
-            end,
-            DictToList = dict:to_list(Dict2),
-            DictToList2 = lists:map(fun({A, {B,C}}) -> {A,B,C} end, DictToList),
-            %print_list(DictToList2),
-            print_chessboard(Chessboard, DictToList2),
-            main(Chessboard, Dict2);
+                    Dict2 = dict:store(PID, {{undefined, undefined},{X,Y}, N}, Dict),
+                    transform_print(Chessboard, Dict2),
+                    render(Chessboard, Dict2, N+1);
+                {ok, {{X_Pos, Y_Pos}, {_,_}, ID}} ->
+                    Dict2 = dict:store(PID, {{X_Pos, Y_Pos},{X,Y}, ID}, Dict),
+                    transform_print(Chessboard, Dict2),
+                    render(Chessboard, Dict2, N)
+            end;
         %sent by ambient when car park or restart
         {parked, PID, X, Y, IsParked} -> 
             io:format("RENDER: Car ~p is parked at (~p, ~p): ~p~n", [PID, X, Y, IsParked]),
-            main(Chessboard, Dict);
+            render(Chessboard, Dict, N);
         %sent by friendship actor TODO: implement this 
         {friendship, PID, PIDLIST} -> 
             io:format("RENDER: Car ~p is friend with ~p~n", [PID, PIDLIST]),
-            main(Chessboard, Dict)
-
+            render(Chessboard, Dict, N)
     end. 
+
+main(Chessboard, Dict) ->
+    PID_R = spawn(render, render, [Chessboard, Dict, 1]),
+    register(render, PID_R),
+    io:format("RENDER: Correctly registered ~p as 'render' ~n", [PID_R]),
+    PID_R. %DEBUG

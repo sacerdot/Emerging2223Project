@@ -1,5 +1,5 @@
 -module(car).
--export([main/2, friendship/3, state/6, detect/7, getFriends/4]).
+-export([main/2,friendship/2, friendship/3, state/4, state/7, detect/7, getFriends/4]).
 
     receive_friends(FriendsList, RefList, L, PID_S) ->
         receive
@@ -13,6 +13,7 @@
                 %Monitor all the friends in the list and save the ref in RefList
                 RefList2 = lists:map(fun({PIDF, _}) -> monitor(process, PIDF) end, FriendList2),
                 %io:format("FRI: I'm ~p my friends are:~p~n ", [self(), FriendList2]),
+                PID_S ! {listModified, FriendList2},
                 timer:sleep(5000),
                 case length(FriendList2) < 5 of
                     true -> getFriends(FriendList2, RefList2, L, PID_S);
@@ -44,7 +45,7 @@
         
     friendship(FriendsList, RefList, PID_S) ->
         %io:format("FRI: start friendship with PID: ~p~n", [self()]),
-        %link(PID_S),
+        
         case length(FriendsList) of 
             5 ->
                 io:format("FRI: I'm ~p I have 5 friends:~p~n ", [self(), FriendsList]),
@@ -62,43 +63,51 @@
                 end;
             _ ->
                 {FriendList2, RefList2} = getFriends(FriendsList, RefList, FriendsList, PID_S),
-                io:format("FRI: Boldro:~p~n ", [FriendList2]),
                 PID_S ! {listModified, FriendList2}, %Send to state the new list of friends
                 friendship(FriendList2, RefList2, PID_S)
 
         end.
 
-                
-    state(World_Knowledge, X_Goal, Y_Goal, H, W, FriendList) ->
-        io:format("Start State~n"),
+   
+    %%%%
+    % @param: PID_S: PID of the state actor
+    % @dev: This function is used to link friendship actor to the state actor and to the detect actor.
+    %       Now, F is linked to S and F is linked to D. Given that F and D are linked, S is linked to D.
+    %       After that it calls friendship/3 that is the main function of the friendship actor
+    friendship(PID_S, PID_D) ->
+        link(PID_S),
+        link(PID_D),
+        friendship([], [], PID_S).
+
+
+    state(PID_D, World_Knowledge, X_Goal, Y_Goal, H, W, FriendList) ->
+        %io:format("Start State~n"),
         receive
             {updateState, PID_D, X, Y, IsFree} -> 
-                io:fwrite("Update Value for park (~p,~p), new value: ~p~n", [X,Y, IsFree]), %Update parkings  
-                %TODO: send the new info to friends
-                io:format("CAR: List: ~p~n", [FriendList]),
+                %io:fwrite("Update Value for park (~p,~p), new value: ~p~n", [X,Y, IsFree]), %Update parkings  
                 case {IsFree, dict:fetch({X,Y}, World_Knowledge)==IsFree} of
                     %If a park becames free, the state actor updates the knowledge of the world
                     %It doesn't update the goal coordinates because this case doesn't affect s
-                    {_,true} -> state(World_Knowledge, X_Goal, Y_Goal, H, W, FriendList);
+                    {_,true} -> state(PID_D, World_Knowledge, X_Goal, Y_Goal, H, W, FriendList);
                     {true, false}->
                             World_Knowledge2 = dict:store({X,Y}, IsFree, World_Knowledge),
                             lists:foreach(fun({_, PIDSTATE}) -> PIDSTATE ! {notifyStatus, X, Y, IsFree} end, FriendList),
-                            state(World_Knowledge2, X_Goal, Y_Goal, H, W, FriendList);
+                            state(PID_D, World_Knowledge2, X_Goal, Y_Goal, H, W, FriendList);
                     %If a park becames busy I have to check if it was the goal
                     {false,false} -> 
                             World_Knowledge2 = dict:store({X,Y}, IsFree, World_Knowledge),
                             lists:foreach(fun({_, PIDSTATE}) -> PIDSTATE ! {notifyStatus, X, Y, IsFree} end, FriendList),
-                        case {X=:=X_Goal, Y =:= Y_Goal} of
-                            %If the goal is busy, I have to generate a new goal   
-                            {true,true} -> 
-                                io:fwrite("New Goal: ~p~n", [{X,Y}]),
-                                {X_Goal_New, Y_Goal_New} = generate_coordinates(H, W), 
-                                PID_D ! {updateGoal, X_Goal_New, Y_Goal_New},
-                                state(World_Knowledge2, X_Goal_New, Y_Goal_New, H, W,FriendList);
-                            %Else update the knowledge of the world
-                            {_,_} -> 
-                                state(World_Knowledge2, X_Goal, Y_Goal, H, W,FriendList)
-                        end
+                            case {X=:=X_Goal, Y =:= Y_Goal} of
+                                %If the goal is busy, I have to generate a new goal   
+                                {true,true} -> 
+                                    io:fwrite("DISCOVER I HAVE TO CREATE A NEW: ~p~n", [{X,Y}]),
+                                    {X_Goal_New, Y_Goal_New} = generate_coordinates(H, W), 
+                                    PID_D ! {updateGoal, X_Goal_New, Y_Goal_New},
+                                    state(PID_D, World_Knowledge2, X_Goal_New, Y_Goal_New, H, W,FriendList);
+                                %Else update the knowledge of the world
+                                {_,_} -> 
+                                    state(PID_D, World_Knowledge2, X_Goal, Y_Goal, H, W,FriendList)
+                            end
                 end;
 
             %Case Car Exit from the parking and needs new goal
@@ -106,29 +115,48 @@
                 io:format("Ask New Goal with Ref ~p~n",[Ref]),
                 {X_Goal_New, Y_Goal_New} = generate_coordinates(H, W), %TODO: check if new coordinates I generate should be free?
                 PID_D ! {responseNewGoal, X_Goal_New, Y_Goal_New, Ref},
-                state(World_Knowledge, X_Goal_New, Y_Goal_New, H, W,FriendList);
+                state(PID_D, World_Knowledge, X_Goal_New, Y_Goal_New, H, W,FriendList);
             
             {notifyStatus, X,Y, IsFree} -> 
-                io:format("CAR: Notify Status {~p,~p} : ~p ~n", [X,Y,IsFree]),
+                %io:format("CAR: Notify Status {~p,~p} : ~p ~n", [X,Y,IsFree]),
                 case dict:fetch({X,Y}, World_Knowledge)==IsFree of
                     true -> 
                         %Do nothing
-                        state(World_Knowledge, X_Goal, Y_Goal, H, W,FriendList);
+                        state(PID_D, World_Knowledge, X_Goal, Y_Goal, H, W,FriendList);
                     false ->
-                        %World changes, notify to friends
+                        %World changed, notify to friends
                         World_Knowledge2 = dict:store({X,Y}, IsFree, World_Knowledge),
                         lists:foreach(fun({_, PIDSTATE}) -> PIDSTATE ! {notifyStatus, X, Y, IsFree} end, FriendList),
-                        state(World_Knowledge2, X_Goal, Y_Goal, H, W,FriendList)
+                        case {X=:=X_Goal, Y =:= Y_Goal} of
+                            %If the goal is busy, I have to generate a new goal   
+                            {true,true} -> 
+                                io:fwrite("NOTIFIED I HAVE TO CREATE A NEW: ~p~n", [{X,Y}]),
+                                {X_Goal_New, Y_Goal_New} = generate_coordinates(H, W), 
+                                PID_D ! {updateGoal, X_Goal_New, Y_Goal_New},
+                                state(PID_D, World_Knowledge2, X_Goal_New, Y_Goal_New, H, W,FriendList);
+                            %Else update the knowledge of the world
+                            {_,_} -> 
+                                state(PID_D, World_Knowledge2, X_Goal, Y_Goal, H, W,FriendList)
+                        end 
                 end;
 
             %TODO: case a friend sends me a new list of friends
             {listModified, NewFriendList} -> 
-                io:format("Received new list of friends: ~p~n", [NewFriendList]),
-                state(World_Knowledge, X_Goal, Y_Goal, H, W , NewFriendList);
+                %io:format("Received new list of friends: ~p~n", [NewFriendList]),
+                state(PID_D, World_Knowledge, X_Goal, Y_Goal, H, W , NewFriendList);
 
             %Default 
-            _ -> state( World_Knowledge, X_Goal, Y_Goal, H, W,FriendList)
+            _ -> state(PID_D, World_Knowledge, X_Goal, Y_Goal, H, W,FriendList)
         end.
+
+
+    state(X_Goal, Y_Goal, H, W) -> 
+        World_Knowledge = dict:from_list([{{X, Y}, undefined} || X <- lists:seq(0, H-1), Y <- lists:seq(0, W-1)]), 
+        receive
+            {pidDetect, PID_D} ->
+                state(PID_D, World_Knowledge, X_Goal, Y_Goal, H, W, [])
+        end.
+
 
     generate_coordinates(H, W) ->
         X = rand:uniform(H)-1,
@@ -204,7 +232,6 @@
     %
     detect(X, Y, X_Goal, Y_Goal, H, W, PID_S) ->
         %io:format("Start Detect with goal (~p,~p)~n", [X_Goal, Y_Goal]),
-        link(PID_S),
         timer:sleep(2000),
         {X_New, Y_New} = move(X, Y, {X_Goal, Y_Goal}, H, W), %TODO: H and W must be passed as parameters? 
         render ! {position, self(), X_New, Y_New},
@@ -241,22 +268,23 @@
     %The main actor creates other actors and re-creates them if they fail
     main(H, W) ->
         process_flag(trap_exit, true), 
-        {X_Spawn, Y_Spawn} = generate_coordinates(H, W),
-        {X_Goal, Y_Goal} = generate_coordinates(H, W),
         %io:format("X_Spawn: ~p, Y_Spawn: ~p~n", [X_Spawn, Y_Spawn]),
         %io:format("X_Goal: ~p, Y_Goal: ~p~n", [X_Goal, Y_Goal]),
 
         Spawn_loop = fun Spawn_loop() ->
-            World_Knowledge = dict:from_list([{{X, Y}, undefined} || X <- lists:seq(0, H-1), Y <- lists:seq(0, W-1)]),
-            PID_S = spawn(?MODULE, state, [World_Knowledge, X_Goal, Y_Goal, H, W, []]),
+            {X_Spawn, Y_Spawn} = generate_coordinates(H, W),
+            {X_Goal, Y_Goal} = generate_coordinates(H, W),
+            PID_S = spawn(?MODULE, state, [X_Goal, Y_Goal, H, W]),
             {PID_D, Ref_monitor} = spawn_monitor(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),
-            PID_F  = spawn(?MODULE, friendship, [[],[], PID_S]),
+            PID_S ! {pidDetect, PID_D},
+            PID_F  = spawn(?MODULE, friendship, [PID_S, PID_D]),
             render ! {target, PID_D, X_Goal, Y_Goal},
             render ! {position, PID_D, X_Spawn, Y_Spawn},
             receive
                 {'DOWN', _, _, PID, Reason } ->
                     io:format("Died PID: ~p, Reason: ~p~n", [PID, Reason]),
                     Spawn_loop();
+                %Print all other messages
                 X -> io:format("X: ~p~n", [X])
                  
             end
