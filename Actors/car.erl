@@ -13,6 +13,7 @@
                 %Monitor all the friends in the list and save the ref in RefList
                 RefList2 = lists:map(fun({PIDF, _}) -> monitor(process, PIDF) end, FriendList2),
                 %io:format("FRI: I'm ~p my friends are:~p~n ", [self(), FriendList2]),
+                
                 PID_S ! {listModified, FriendList2},
                 timer:sleep(5000),
                 case length(FriendList2) < 5 of
@@ -48,10 +49,10 @@
         
         case length(FriendsList) of 
             5 ->
-                io:format("FRI: I'm ~p I have 5 friends:~p~n ", [self(), FriendsList]),
+                %io:format("FRI: I'm ~p I have 5 friends:~p~n ", [self(), FriendsList]),
                 receive 
                     {getFriends, PIDF, PIDS, Ref} ->
-                        io:format("FRI: I'm ~p receiving get friends from ~p~n", [self(), PIDF]),
+                        %io:format("FRI: I'm ~p receiving get friends from ~p~n", [self(), PIDF]),
                         PIDF ! {myFriends, FriendsList, Ref},
                         friendship(FriendsList, RefList, PID_S);
                     %case a friend dies
@@ -100,7 +101,7 @@
                             case {X=:=X_Goal, Y =:= Y_Goal} of
                                 %If the goal is busy, I have to generate a new goal   
                                 {true,true} -> 
-                                    io:fwrite("DISCOVER I HAVE TO CREATE A NEW: ~p~n", [{X,Y}]),
+                                    io:fwrite("DISCOVER I HAVE TO CREATE A NEW GOAL: ~p~n", [{X,Y}]),
                                     {X_Goal_New, Y_Goal_New} = generate_coordinates(H, W), 
                                     PID_D ! {updateGoal, X_Goal_New, Y_Goal_New},
                                     state(PID_D, World_Knowledge2, X_Goal_New, Y_Goal_New, H, W,FriendList);
@@ -130,7 +131,7 @@
                         case {X=:=X_Goal, Y =:= Y_Goal} of
                             %If the goal is busy, I have to generate a new goal   
                             {true,true} -> 
-                                io:fwrite("NOTIFIED I HAVE TO CREATE A NEW: ~p~n", [{X,Y}]),
+                                %io:fwrite("NOTIFIED I HAVE TO CREATE A NEW GOAL: ~p~n", [{X,Y}]),
                                 {X_Goal_New, Y_Goal_New} = generate_coordinates(H, W), 
                                 PID_D ! {updateGoal, X_Goal_New, Y_Goal_New},
                                 state(PID_D, World_Knowledge2, X_Goal_New, Y_Goal_New, H, W,FriendList);
@@ -143,6 +144,8 @@
             %TODO: case a friend sends me a new list of friends
             {listModified, NewFriendList} -> 
                 %io:format("Received new list of friends: ~p~n", [NewFriendList]),
+
+                render ! {friends, PID_D, NewFriendList}, %send to render the new list of friends
                 state(PID_D, World_Knowledge, X_Goal, Y_Goal, H, W , NewFriendList);
 
             %Default 
@@ -262,7 +265,7 @@
                     _ -> detect(X_New, Y_New, X_Goal, Y_Goal, H, W, PID_S)
                 
                 end; 
-            _ -> io:fwrite("No Pattern Matching Found~n") %TODO: Kill process?
+            X -> io:fwrite("~p~n",[X]) %TODO: Kill process?
         end.
 
     %The main actor creates other actors and re-creates them if they fail
@@ -272,21 +275,19 @@
         %io:format("X_Goal: ~p, Y_Goal: ~p~n", [X_Goal, Y_Goal]),
 
         Spawn_loop = fun Spawn_loop() ->
+            
             {X_Spawn, Y_Spawn} = generate_coordinates(H, W),
             {X_Goal, Y_Goal} = generate_coordinates(H, W),
             PID_S = spawn(?MODULE, state, [X_Goal, Y_Goal, H, W]),
-            {PID_D, Ref_monitor} = spawn_monitor(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),
+            PID_D = spawn_link(?MODULE, detect, [X_Spawn, Y_Spawn, X_Goal, Y_Goal, H, W, PID_S]),
             PID_S ! {pidDetect, PID_D},
             PID_F  = spawn(?MODULE, friendship, [PID_S, PID_D]),
             render ! {target, PID_D, X_Goal, Y_Goal},
             render ! {position, PID_D, X_Spawn, Y_Spawn},
             receive
-                {'DOWN', _, _, PID, Reason } ->
+                {'EXIT', PID, Reason } ->
                     io:format("Died PID: ~p, Reason: ~p~n", [PID, Reason]),
-                    Spawn_loop();
-                %Print all other messages
-                X -> io:format("X: ~p~n", [X])
-                 
+                    Spawn_loop()  
             end
         end,
         Spawn_loop().
